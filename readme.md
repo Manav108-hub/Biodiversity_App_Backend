@@ -1,17 +1,18 @@
-# Biodiversity App Backend
+# Biodiversity App Backend (FastAPI)
 
-A Flask-based REST API for a biodiversity tracking application that allows users to log species observations with photos and detailed questionnaires.
+A FastAPI-based REST API for biodiversity tracking that allows users to log species observations with photos, location data, and structured questionnaires.
 
-## Features
+# 🚀 Features
 
-- **User Authentication**: Registration, login with JWT tokens
-- **Species Management**: CRUD operations for species data
-- **Dynamic Questionnaire**: Configurable questions for species observations
-- **Photo Uploads**: Optional photo attachments for observations
-- **Location Tracking**: GPS coordinates and location names
-- **User History**: Personal observation history for users
-- **Admin Dashboard**: Admin can view all data and export to CSV
-- **Data Export**: CSV export functionality for research purposes
+JWT Authentication : Secure user registration & login
+Role-Based Access : Admin privileges for managing data
+Species Management : Add/edit species records
+Dynamic Questionnaire : Configurable question types (multiple choice, text, number, yes/no)
+Photo Uploads : Optional image attachments for observations
+Location Tracking : GPS coordinates + location name
+Answer Storage : Structured responses to predefined questions
+CSV Export : Admin-only export of all observation data
+Interactive Docs : Swagger UI at /docs and ReDoc at /redoc
 
 ## Installation & Setup
 
@@ -43,8 +44,8 @@ Create a `.env` file with your configuration:
 SECRET_KEY=your-super-secret-key-change-this-in-production
 JWT_SECRET_KEY=your-jwt-secret-key-change-this-too
 DATABASE_URL=sqlite:///biodiversity.db
-FLASK_ENV=development
-FLASK_DEBUG=True
+UPLOAD_FOLDER=uploads
+ALLOWED_EXTENSIONS=png,jpg,jpeg,gif
 ```
 
 ### 3. Initialize Database
@@ -54,117 +55,37 @@ FLASK_DEBUG=True
 python app.py
 ```
 
-### 4. Default Admin Account
 
-- **Username**: admin
-- **Email**: admin@biodiversity.com
-- **Password**: admin123
 
 **⚠️ Important**: Change the admin password after first login in production!
 
-## API Endpoints
+## 🌐 API Endpoints
 
-### Authentication
-- `POST /api/register` - User registration
-- `POST /api/login` - User login
+📋 Authentication
+POST /register - Create user (admin requires secret)
+POST /login - Get JWT token
+GET /profile - View current user
+GET /stats - Observation stats
 
-### Species Management
-- `GET /api/species` - Get all species (authenticated)
-- `POST /api/species` - Create new species (admin only)
+🐦 Species Management
+GET /species - Get all species
+POST /species - Create new species (admin only)
 
-### Questions
-- `GET /api/questions` - Get all questions (authenticated)
-- `POST /api/questions` - Create new question (admin only)
+❓ Question Management
+GET /questions - List all questions
+POST /questions - Create new question (admin only)
 
-### Species Observations
-- `POST /api/species-logs` - Create new observation log
-- `GET /api/species-logs` - Get user's observation history
-- `GET /api/species-logs/<id>` - Get specific observation details
+📝 Observation Logs
+POST /species-logs - Submit observation with answers
+GET /species-logs - View user's logs
+GET /species-logs/{log_id} - View specific log
 
-### Admin Routes
-- `GET /api/admin/all-logs` - Get all observations (admin only)
-- `GET /api/admin/export-csv` - Export data to CSV (admin only)
-- `GET /api/admin/users` - Get all users (admin only)
+👤 Admin Dashboard
+GET /admin/users - List all users
+GET /admin/all-logs - View all observations
+GET /admin/export-csv - Download CSV export
 
-### Utility
-- `GET /api/profile` - Get current user profile
-- `GET /api/stats` - Get user statistics
-- `GET /api/uploads/<filename>` - Serve uploaded images
 
-## API Usage Examples
-
-### 1. User Registration
-
-```bash
-curl -X POST http://localhost:5000/api/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "naturelover",
-    "email": "user@example.com",
-    "password": "securepassword"
-  }'
-```
-
-### 2. User Login
-
-```bash
-curl -X POST http://localhost:5000/api/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "naturelover",
-    "password": "securepassword"
-  }'
-```
-
-### 3. Create Species Observation
-
-```bash
-curl -X POST http://localhost:5000/api/species-logs \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -F "species_id=1" \
-  -F "location_latitude=40.7128" \
-  -F "location_longitude=-74.0060" \
-  -F "location_name=Central Park, NYC" \
-  -F "notes=Beautiful robin spotted in the morning" \
-  -F "photo=@path/to/image.jpg" \
-  -F 'answers=[
-    {"question_id": 1, "answer_text": "Small (5-20cm)"},
-    {"question_id": 2, "answer_text": "Red"},
-    {"question_id": 5, "answer_text": "1"}
-  ]'
-```
-
-### 4. Get User's Observation History
-
-```bash
-curl -X GET http://localhost:5000/api/species-logs \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
-
-### 5. Admin: Export Data to CSV
-
-```bash
-curl -X GET http://localhost:5000/api/admin/export-csv \
-  -H "Authorization: Bearer ADMIN_JWT_TOKEN" \
-  --output biodiversity_data.csv
-```
-
-## Database Schema
-
-### Users Table
-- id, username, email, password_hash, is_admin, created_at
-
-### Species Table
-- id, name, scientific_name, category, description, created_at
-
-### Questions Table
-- id, question_text, question_type, options, is_required, order_index, created_at
-
-### Species_Logs Table
-- id, user_id, species_id, location_latitude, location_longitude, location_name, photo_path, notes, created_at
-
-### Answers Table
-- id, species_log_id, question_id, answer_text, created_at
 
 ## File Upload Configuration
 
