@@ -1,4 +1,3 @@
-# routes/routes.py
 import os
 from typing import List, Optional
 
@@ -41,31 +40,31 @@ async def register(
 ):
     if not validate_email(user.email):
         raise HTTPException(status_code=400, detail="Invalid email format")
-    
+
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already exists")
-    
+
     if db.query(User).filter(User.username == user.username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
-    
+
     is_admin = False
     if user.is_admin:
         if x_admin_secret == os.getenv("ADMIN_SECRET"):
             is_admin = True
         else:
             raise HTTPException(status_code=403, detail="Invalid admin secret")
-    
+
     db_user = User(
         username=user.username,
         email=user.email,
         password_hash=bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
         is_admin=is_admin
     )
-    
+
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    
+
     access_token = create_access_token(data={"sub": str(db_user.id)})
     return {
         "message": "User registered successfully",
@@ -75,17 +74,16 @@ async def register(
 
 @router.post("/login")
 async def login(
-    credentials: UserLogin,  # Accepts JSON body
+    credentials: UserLogin,
     db: Session = Depends(get_db)
 ):
-    # Check if user exists by email or username
     user = db.query(User).filter(
         (User.username == credentials.username) | (User.email == credentials.username)
     ).first()
-    
+
     if not user or not user.check_password(credentials.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     access_token = create_access_token(data={"sub": str(user.id)})
     return {
         "message": "Login successful",
@@ -163,24 +161,21 @@ class SpeciesLogCreate(BaseModel):
 
 @router.post("/species-logs")
 async def create_species_log(
-    species_log: str = Form(...),  # JSON as string in multipart/form-data
+    species_log: str = Form(...),
     photo: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Parse the JSON string
     try:
         data = json.loads(species_log)
         species_log_data = SpeciesLogCreate(**data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON in species_log: {e}")
 
-    # Handle image upload
     photo_path = None
     if photo:
         photo_path = save_uploaded_file(photo)
 
-    # Create SpeciesLog
     db_log = SpeciesLog(
         user_id=current_user.id,
         species_id=species_log_data.species_id,
@@ -194,7 +189,6 @@ async def create_species_log(
     db.commit()
     db.refresh(db_log)
 
-    # Store answers
     for answer in species_log_data.answers:
         db_answer = Answer(
             species_log_id=db_log.id,
@@ -235,7 +229,7 @@ async def get_all_species_logs(db: Session = Depends(get_db), admin: bool = Depe
 async def export_csv(db: Session = Depends(get_db), admin: bool = Depends(admin_required)):
     logs = db.query(SpeciesLog).all()
     csv_data = []
-    
+
     for log in logs:
         base_row = {
             "log_id": log.id,
@@ -249,20 +243,21 @@ async def export_csv(db: Session = Depends(get_db), admin: bool = Depends(admin_
             "location_longitude": log.location_longitude,
             "location_name": log.location_name,
             "notes": log.notes,
-            "created_at": log.created_at.isoformat() if log.created_at else "N/A"
+            "created_at": log.created_at.isoformat() if log.created_at else "N/A",
+            "photo_url": log.photo_path or ""
         }
-        
+
         for answer in log.answers:
             question_key = f"Q{answer.question_id}_{answer.question.question_text[:30]}" if answer.question else f"Q{answer.question_id}"
             base_row[question_key] = answer.answer_text
-        
+
         csv_data.append(base_row)
-    
+
     df = pd.DataFrame(csv_data)
     output = io.StringIO()
     df.to_csv(output, index=False)
     output.seek(0)
-    
+
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode()),
         media_type="text/csv",

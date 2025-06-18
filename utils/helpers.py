@@ -1,26 +1,36 @@
-# utils/helpers.py
-from fastapi import UploadFile
-from datetime import datetime
+import boto3
 import uuid
-from config import Config
-import os
+from fastapi import UploadFile
+from config import config
 
-def save_uploaded_file(file: UploadFile):
-    os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-    
-    filename = f"{uuid.uuid4()}_{file.filename}"
-    file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
-    
-    with open(file_path, "wb") as buffer:
-        buffer.write(file.file.read())
-    
-    return filename
+# Initialize S3 client
+s3 = boto3.client(
+    "s3",
+    region_name=config.AWS_S3_REGION,
+    aws_access_key_id=config.AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=config.AWS_SECRET_ACCESS_KEY,
+)
 
-def allowed_file(filename: str):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
+def save_uploaded_file(file: UploadFile) -> str:
+    # Generate a unique filename
+    ext = file.filename.rsplit(".", 1)[-1]
+    key = f"{uuid.uuid4().hex}.{ext}"
+    
+    # Upload to S3
+    s3.upload_fileobj(
+        file.file,
+        config.AWS_S3_BUCKET_NAME,
+        key,
+        # ExtraArgs={"ACL": "public-read", "ContentType": file.content_type}
+    )
+    
+    # Return public URL
+    return f"{config.AWS_S3_BASE_URL}/{key}"
 
-def validate_email(email: str):
+def allowed_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in config.ALLOWED_EXTENSIONS
+
+def validate_email(email: str) -> bool:
     import re
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None

@@ -8,3 +8,5 @@ pillow==10.0.1
 pandas==2.1.3
 requests
 python-multipart
+boto3 
+python-dotenv
