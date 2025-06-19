@@ -13,7 +13,7 @@ from utils.auth import (
     get_current_user,
     admin_required
 )
-from utils.helpers import save_uploaded_file, validate_email
+from utils.helpers import get_region_name, save_uploaded_file, validate_email
 import json
 from datetime import datetime
 import pandas as pd
@@ -274,3 +274,45 @@ async def get_user_stats(db: Session = Depends(get_db), current_user: User = Dep
     total_logs = db.query(SpeciesLog).filter(SpeciesLog.user_id == current_user.id).count()
     unique_species = db.query(SpeciesLog.species_id).filter(SpeciesLog.user_id == current_user.id).distinct().count()
     return {"total_logs": total_logs, "unique_species": unique_species}
+
+
+# maps route 
+@router.get("/public/species-locations")
+async def get_species_locations(db: Session = Depends(get_db)):
+    logs = db.query(SpeciesLog).filter(
+        SpeciesLog.location_latitude.isnot(None),
+        SpeciesLog.location_longitude.isnot(None)
+    ).all()
+
+    response = []
+
+    for log in logs:
+        lat = log.location_latitude
+        lng = log.location_longitude
+
+        region = get_region_name(lat, lng)  # Reverse geocode once
+        response.append({
+            "lat": lat,
+            "lng": lng,
+            "species_id": log.species_id,
+            "species_name": log.species.name if log.species else None,
+            "region": region
+        })
+
+    return response
+
+@router.get("/public/species-images")
+async def get_species_images(db: Session = Depends(get_db)):
+    species_logs = db.query(SpeciesLog).filter(SpeciesLog.photo_path.isnot(None)).all()
+
+    species_images = {}
+    for log in species_logs:
+        if log.species_id not in species_images:
+            species_images[log.species_id] = {
+                "species_id": log.species_id,
+                "species_name": log.species.name if log.species else "Unknown",
+                "photo_path": log.photo_path
+            }
+
+    return list(species_images.values())
+

@@ -1,6 +1,8 @@
+import os
 import boto3
 import uuid
 from fastapi import UploadFile
+import requests
 from config import config
 
 # Initialize S3 client
@@ -34,3 +36,22 @@ def validate_email(email: str) -> bool:
     import re
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
+
+def get_region_name(lat, lng):
+    try:
+        api_key = os.getenv("OPENCAGE_KEY")
+        if not api_key:
+            print("Missing OPENCAGE_KEY")
+            return "Unknown"
+
+        url = f"https://api.opencagedata.com/geocode/v1/json?q={lat}+{lng}&key={api_key}"
+        res = requests.get(url)
+        data = res.json()
+
+        if data and data.get("results"):
+            components = data["results"][0]["components"]
+            return components.get("country") or components.get("state") or "Unknown"
+        return "Unknown"
+    except Exception as e:
+        print("Geocoding error:", e)
+        return "Unknown"
