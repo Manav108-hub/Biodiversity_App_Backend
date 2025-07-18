@@ -15,7 +15,7 @@ app = FastAPI(title="Biodiversity App API")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://bio-moni-web.vercel.app/"],
+    allow_origins=["https://bio-moni-web.vercel.app"],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
