@@ -103,7 +103,7 @@ async def create_species(
     category: str = Form(...),
     description: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(admin_required)
+    current_user: User = Depends(get_current_user)
 ):
     db_species = Species(
         name=name,
