@@ -1,4 +1,5 @@
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship, declarative_base
 import bcrypt
@@ -57,31 +58,45 @@ class Species(Base):
 
 class Question(Base):
     __tablename__ = 'questions'
-    
+
     id = Column(Integer, primary_key=True)
     question_text = Column(Text, nullable=False)
     question_type = Column(String(20), nullable=False)
     options = Column(Text, nullable=True)
+    section = Column(String, nullable=True)
     is_required = Column(Boolean, default=True)
     order_index = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    # 🔧 CHANGE THIS: Use Text instead of Integer for question text reference
+    depends_on = Column(Text, nullable=True)  # Changed from Integer + ForeignKey
+    depends_on_value = Column(String, nullable=True)
+    details = Column(JSON, nullable=True)
+
+    # 🔧 REMOVE THIS: No longer needed since we're not using foreign key
+    # parent = relationship("Question", remote_side=[id], backref="children")
+
     def get_options(self):
         return json.loads(self.options) if self.options else []
-    
+
     def set_options(self, options_list: list):
         self.options = json.dumps(options_list)
-    
+
     def to_dict(self):
         return {
             'id': self.id,
             'question_text': self.question_text,
             'question_type': self.question_type,
             'options': self.get_options(),
+            'section': self.section,
             'is_required': self.is_required,
             'order_index': self.order_index,
-            'created_at': self.created_at.isoformat()
+            'depends_on': self.depends_on,  # Now stores question text
+            'depends_on_value': self.depends_on_value,
+            'created_at': self.created_at.isoformat(),
+            'details': self.details
         }
+
 
 class SpeciesLog(Base):
     __tablename__ = 'species_logs'

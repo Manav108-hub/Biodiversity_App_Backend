@@ -8,7 +8,7 @@ import uvicorn
 import os
 import json
 from datetime import datetime
-from data.part_c_questions import part_c_questions  # Import Part C questions
+from data.part_c_questions import data  # Import all survey questions
 
 app = FastAPI(title="Biodiversity App API")
 
@@ -35,30 +35,49 @@ async def startup_event():
 def seed_database():
     """Seed the database with initial data"""
     db = next(get_db())
-    
+   
     try:
-        # Create admin user if not exists (optional)
-        if db.query(User).count() == 0:
-            admin_user = User(
-                username='admin',
-                email='admin@example.com',
-                is_admin=True
-            )
-            admin_user.set_password('admin123')
-            db.add(admin_user)
-        
-        # Seed only Part C questions
+        # Seed questions if not already present
         if db.query(Question).count() == 0:
-            for q_data in part_c_questions:
-                db_question = Question(**q_data)
+            for q_data in data:
+                # Handle options field properly
+                options_value = None
                 if q_data.get("options"):
-                    db_question.set_options(json.loads(q_data["options"]))
+                    if isinstance(q_data["options"], list):
+                        options_value = json.dumps(q_data["options"])
+                    else:
+                        options_value = q_data["options"]
+                
+                # Handle details field properly  
+                details_value = None
+                if q_data.get("details"):
+                    if isinstance(q_data["details"], dict):
+                        details_value = q_data["details"]  # SQLAlchemy JSON column handles dict directly
+                    else:
+                        details_value = q_data["details"]
+                
+                # Create question object with proper data types
+                db_question = Question(
+                    question_text=q_data["question_text"],
+                    question_type=q_data["question_type"],
+                    options=options_value,
+                    is_required=q_data["is_required"],
+                    order_index=q_data["order_index"],
+                    section=q_data.get("section", "Part C"),
+                    depends_on=q_data.get("depends_on"),  # String question text
+                    depends_on_value=q_data.get("depends_on_value"),
+                    details=details_value  # Dict for JSON column
+                )
                 db.add(db_question)
-        
+       
         db.commit()
+        print("Database seeded successfully!")
+        
     except Exception as e:
         db.rollback()
         print(f"Error seeding database: {e}")
+        import traceback
+        traceback.print_exc()
 
 @app.get("/")
 async def root():

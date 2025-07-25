@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional
-
+from dotenv import load_dotenv
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ import json
 from datetime import datetime
 import pandas as pd
 import io
+from fastapi import Header
 
 router = APIRouter()
 
@@ -35,7 +36,7 @@ class UserLogin(BaseModel):
 @router.post("/register")
 async def register(
     user: UserCreate,
-    x_admin_secret: str = None,
+    x_admin_secret: str = Header(default=None),
     db: Session = Depends(get_db)
 ):
     if not validate_email(user.email):
@@ -124,8 +125,13 @@ class QuestionCreate(BaseModel):
     question_text: str
     question_type: str
     options: Optional[list] = None
+    section: Optional[str] = None
     is_required: bool = True
     order_index: int = 0
+    depends_on: Optional[str] = None  # 🔧 NEW: Now accepts question text instead of ID
+    depends_on_value: Optional[str] = None  # 🔧 NEW: The value that triggers dependency
+    details: Optional[dict] = None  # 🔧 NEW: For storing additional question metadata
+
 
 @router.get("/questions")
 async def get_questions(db: Session = Depends(get_db)):
@@ -137,14 +143,32 @@ async def create_question(
     db: Session = Depends(get_db),
     current_user: User = Depends(admin_required)
 ):
-    db_question = Question(**question.dict())
+    # 🔧 Handle options serialization
+    options_json = None
+    if question.options:
+        options_json = json.dumps(question.options)
+    
+    db_question = Question(
+        question_text=question.question_text,
+        question_type=question.question_type,
+        options=options_json,  # Store as JSON string
+        section=question.section,
+        is_required=question.is_required,
+        order_index=question.order_index,
+        depends_on=question.depends_on,  # Now stores question text
+        depends_on_value=question.depends_on_value,
+        details=question.details  # SQLAlchemy JSON column handles dict directly
+    )
+    
     db.add(db_question)
     db.commit()
     db.refresh(db_question)
+    
     return {
         "message": "Question created successfully",
         "question": db_question.to_dict()
     }
+
 
 # Species logs routes
 class AnswerCreate(BaseModel):
@@ -315,4 +339,28 @@ async def get_species_images(db: Session = Depends(get_db)):
             }
 
     return list(species_images.values())
+
+@router.get("/questions-with-dependencies")
+async def get_questions_with_dependencies(db: Session = Depends(get_db)):
+    """Get questions with resolved dependency information"""
+    questions = db.query(Question).order_by(Question.order_index).all()
+    
+    # Create a mapping for easier dependency resolution
+    question_map = {q.question_text: q.to_dict() for q in questions}
+    
+    result = []
+    for question in questions:
+        q_dict = question.to_dict()
+        
+        # Add dependency information if it exists
+        if question.depends_on and question.depends_on in question_map:
+            q_dict['depends_on_question'] = {
+                'id': question_map[question.depends_on]['id'],
+                'question_text': question.depends_on,
+                'value_required': question.depends_on_value
+            }
+        
+        result.append(q_dict)
+    
+    return {"questions": result}
 
