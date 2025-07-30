@@ -169,6 +169,227 @@ async def create_question(
         "question": db_question.to_dict()
     }
 
+# Add this to your existing routes.py file
+
+class QuestionUpdate(BaseModel):
+    question_text: Optional[str] = None
+    question_type: Optional[str] = None
+    options: Optional[list] = None
+    section: Optional[str] = None
+    is_required: Optional[bool] = None
+    order_index: Optional[int] = None
+    depends_on: Optional[str] = None  # Question text reference
+    depends_on_value: Optional[str] = None
+    details: Optional[dict] = None
+
+@router.put("/questions/{question_id}")
+async def update_question(
+    question_id: int,
+    question_update: QuestionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required)
+):
+    """
+    Update a question by ID. Requires admin access.
+    Only provided fields will be updated (partial update).
+    """
+    # Find the question
+    db_question = db.query(Question).filter(Question.id == question_id).first()
+    if not db_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # Update only the fields that were provided
+    update_data = question_update.dict(exclude_unset=True)
+    
+    for field, value in update_data.items():
+        if field == "options" and value is not None:
+            # Handle options serialization
+            setattr(db_question, field, json.dumps(value))
+        else:
+            setattr(db_question, field, value)
+    
+    # Commit the changes
+    try:
+        db.commit()
+        db.refresh(db_question)
+        return {
+            "message": "Question updated successfully",
+            "question": db_question.to_dict()
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update question: {str(e)}")
+
+# Optional: Bulk update endpoint for updating multiple questions at once
+class BulkQuestionUpdate(BaseModel):
+    questions: List[dict]  # List of {"id": int, "updates": QuestionUpdate}
+
+@router.put("/questions/bulk")
+async def bulk_update_questions(
+    bulk_update: BulkQuestionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required)
+):
+    """
+    Update multiple questions at once. Requires admin access.
+    Format: {"questions": [{"id": 1, "updates": {...}}, {"id": 2, "updates": {...}}]}
+    """
+    updated_questions = []
+    errors = []
+    
+    for item in bulk_update.questions:
+        question_id = item.get("id")
+        updates = item.get("updates", {})
+        
+        try:
+            # Find the question
+            db_question = db.query(Question).filter(Question.id == question_id).first()
+            if not db_question:
+                errors.append(f"Question with ID {question_id} not found")
+                continue
+            
+            # Apply updates
+            for field, value in updates.items():
+                if field == "options" and value is not None:
+                    setattr(db_question, field, json.dumps(value))
+                else:
+                    setattr(db_question, field, value)
+            
+            updated_questions.append(db_question.to_dict())
+            
+        except Exception as e:
+            errors.append(f"Failed to update question {question_id}: {str(e)}")
+    
+    try:
+        db.commit()
+        return {
+            "message": f"Updated {len(updated_questions)} questions successfully",
+            "updated_questions": updated_questions,
+            "errors": errors if errors else None
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to commit updates: {str(e)}")
+
+# DELETE endpoints for questions
+@router.delete("/questions/{question_id}")
+async def delete_question(
+    question_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required)
+):
+    """
+    Delete a question by ID. Requires admin access.
+    Note: This will also delete all associated answers due to cascade relationships.
+    """
+    # Find the question
+    db_question = db.query(Question).filter(Question.id == question_id).first()
+    if not db_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # Check if there are any answers associated with this question
+    answer_count = db.query(Answer).filter(Answer.question_id == question_id).count()
+    
+    try:
+        # Store question info for response before deletion
+        question_info = db_question.to_dict()
+        
+        # Delete the question (answers will be deleted automatically due to cascade)
+        db.delete(db_question)
+        db.commit()
+        
+        return {
+            "message": f"Question deleted successfully. {answer_count} associated answers were also removed.",
+            "deleted_question": question_info,
+            "affected_answers": answer_count
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete question: {str(e)}")
+
+# Bulk delete endpoint
+class BulkQuestionDelete(BaseModel):
+    question_ids: List[int]
+
+@router.delete("/questions/bulk")
+async def bulk_delete_questions(
+    bulk_delete: BulkQuestionDelete,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required)
+):
+    """
+    Delete multiple questions at once. Requires admin access.
+    Format: {"question_ids": [1, 2, 3, 4]}
+    """
+    deleted_questions = []
+    errors = []
+    total_affected_answers = 0
+    
+    for question_id in bulk_delete.question_ids:
+        try:
+            # Find the question
+            db_question = db.query(Question).filter(Question.id == question_id).first()
+            if not db_question:
+                errors.append(f"Question with ID {question_id} not found")
+                continue
+            
+            # Count associated answers
+            answer_count = db.query(Answer).filter(Answer.question_id == question_id).count()
+            total_affected_answers += answer_count
+            
+            # Store question info before deletion
+            question_info = db_question.to_dict()
+            question_info['affected_answers'] = answer_count
+            
+            # Delete the question
+            db.delete(db_question)
+            deleted_questions.append(question_info)
+            
+        except Exception as e:
+            errors.append(f"Failed to delete question {question_id}: {str(e)}")
+    
+    try:
+        db.commit()
+        return {
+            "message": f"Deleted {len(deleted_questions)} questions successfully",
+            "deleted_questions": deleted_questions,
+            "total_affected_answers": total_affected_answers,
+            "errors": errors if errors else None
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to commit deletions: {str(e)}")
+
+# Soft delete option (marks as deleted instead of removing from database)
+@router.patch("/questions/{question_id}/archive")
+async def archive_question(
+    question_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_required)
+):
+    """
+    Archive/soft delete a question by ID. Requires admin access.
+    Note: This requires adding an 'is_active' or 'archived' field to your Question model.
+    This is a safer alternative to hard deletion.
+    """
+    # Find the question
+    db_question = db.query(Question).filter(Question.id == question_id).first()
+    if not db_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # Note: You would need to add an 'is_active' boolean field to your Question model
+    # For now, this is a placeholder implementation
+    
+    # If you add is_active field to Question model, uncomment below:
+    # db_question.is_active = False
+    # db.commit()
+    # db.refresh(db_question)
+    
+    return {
+        "message": "Archive feature requires adding 'is_active' field to Question model",
+        "suggestion": "Consider adding 'is_active = Column(Boolean, default=True)' to Question model for soft deletes"
+    }
+
 
 # Species logs routes
 class AnswerCreate(BaseModel):
