@@ -67,6 +67,8 @@ class Question(Base):
     is_required = Column(Boolean, default=True)
     order_index = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # In your Question model
+    answers = relationship("Answer", back_populates="question", cascade="all, delete-orphan")
     
     # 🔧 CHANGE THIS: Use Text instead of Integer for question text reference
     depends_on = Column(Text, nullable=True)  # Changed from Integer + ForeignKey
@@ -136,8 +138,10 @@ class Answer(Base):
     question_id = Column(Integer, ForeignKey('questions.id'), nullable=False)
     answer_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # In your Answer model  
+    question_id = Column(Integer, ForeignKey('questions.id', ondelete='CASCADE'), nullable=False)
     
-    question = relationship("Question", backref="answers")
+    question = relationship("Question", back_populates="answers")
     
     def to_dict(self):
         return {
